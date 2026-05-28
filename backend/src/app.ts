@@ -1,8 +1,9 @@
 import express from 'express';
+import type { RequestHandler } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
-import pinoHttp from 'pino-http';
+import { pinoHttp } from 'pino-http';
 import { rateLimit } from 'express-rate-limit';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
@@ -10,20 +11,24 @@ import { requestId } from './middleware/requestId.middleware.js';
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { apiRouter } from './routes/index.js';
 
+const mw = (fn: unknown) => fn as RequestHandler;
+
 const app = express();
 
-app.use(helmet());
+app.use(mw(helmet()));
 app.use(
-  cors({
-    origin: env.CORS_ORIGINS.split(',').map((o) => o.trim()),
-    credentials: true,
-  }),
+  mw(
+    cors({
+      origin: env.CORS_ORIGINS.split(',').map((o) => o.trim()),
+      credentials: true,
+    }),
+  ),
 );
-app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(mw(cookieParser()));
+app.use(mw(express.json()));
+app.use(mw(express.urlencoded({ extended: true })));
 app.use(requestId);
-app.use(pinoHttp({ logger, quietReqLogger: true }));
+app.use(mw(pinoHttp({ logger, quietReqLogger: true })));
 
 app.use(
   '/api/auth',

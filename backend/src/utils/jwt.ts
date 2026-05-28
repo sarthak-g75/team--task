@@ -4,13 +4,13 @@ import type { JwtPayload } from '../core/types.js';
 
 export function signAccessToken(payload: Omit<JwtPayload, 'iat' | 'exp'>) {
   return jwt.sign(payload, env.JWT_ACCESS_SECRET, {
-    expiresIn: env.JWT_ACCESS_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+    expiresIn: env.JWT_ACCESS_EXPIRES_IN as NonNullable<jwt.SignOptions['expiresIn']>,
   });
 }
 
 export function signRefreshToken(userId: string) {
   return jwt.sign({ sub: userId }, env.JWT_REFRESH_SECRET, {
-    expiresIn: env.JWT_REFRESH_EXPIRES_IN as jwt.SignOptions['expiresIn'],
+    expiresIn: env.JWT_REFRESH_EXPIRES_IN as NonNullable<jwt.SignOptions['expiresIn']>,
   });
 }
 
