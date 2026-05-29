@@ -11,8 +11,8 @@
     "db:migrate": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
-    "test": "jest --forceExit",
-    "test:watch": "jest --watch",
+    "test": "jest --runInBand --forceExit",
+    "test:watch": "jest --watch --runInBand",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

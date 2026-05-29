@@ -15,3 +15,24 @@ export function authenticate(req: Request, _res: Response, next: NextFunction) {
     throw ApiError.unauthorized('Invalid or expired token');
   }
 }
+
+export function authenticateSse(req: Request, _res: Response, next: NextFunction) {
+  const header = req.headers.authorization;
+  const queryToken = req.query['access_token'];
+  const token =
+    typeof queryToken === 'string'
+      ? queryToken
+      : header?.startsWith('Bearer ')
+        ? header.slice(7)
+        : undefined;
+
+  if (!token) {
+    throw ApiError.unauthorized();
+  }
+  try {
+    req.user = verifyAccessToken(token);
+    next();
+  } catch {
+    throw ApiError.unauthorized('Invalid or expired token');
+  }
+}

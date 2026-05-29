@@ -1,12 +1,11 @@
-import type { Request, Response } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import type { TaskStatus } from '@prisma/client';
 import { BaseController } from '../../core/BaseController.js';
 import { ApiError } from '../../core/ApiError.js';
 import { prisma } from '../../config/database.js';
+import { getTaskCache, setTaskCache, invalidateTaskCache } from '../../utils/cache.js';
+import { publishTaskEvent } from '../../realtime/taskEvents.js';
 
-// Allowed status transitions. The happy path is linear
-// (TODO → IN_PROGRESS → IN_REVIEW → DONE); BLOCKED is reachable from any
-// active state and resumes back into one. DONE is terminal.
 const TRANSITIONS: Record<TaskStatus, TaskStatus[]> = {
   TODO: ['IN_PROGRESS', 'BLOCKED'],
   IN_PROGRESS: ['IN_REVIEW', 'BLOCKED'],
@@ -53,7 +52,6 @@ export class TaskController extends BaseController {
     return where;
   }
 
-  /** MEMBERs may only see or mutate tasks assigned to them. */
   protected async getAccessScope(req: Request) {
     if (req.user!.role === 'MEMBER') {
       return { assigneeId: req.user!.sub };
@@ -66,7 +64,6 @@ export class TaskController extends BaseController {
     method: 'create' | 'update',
     req: Request,
   ) {
-    // MEMBERs may edit their task's details but cannot reassign or move it.
     if (
       method === 'update' &&
       req.user!.role === 'MEMBER' &&
@@ -102,11 +99,68 @@ export class TaskController extends BaseController {
     return data;
   }
 
-  /**
-   * PATCH /tasks/:id/status — advance a task through the state machine.
-   * Only the assignee or a MANAGER/ADMIN may change a task's status, and only
-   * along an allowed transition.
-   */
+  async index(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const assignee = this.cacheAssignee(req);
+      const filters = this.cacheFilters(req);
+
+      if (assignee) {
+        const cached = await getTaskCache(assignee, filters);
+        if (cached) {
+          res.status(200).json(cached);
+          return;
+        }
+      }
+
+      const { data, page, limit, total } = await this.listPage(req);
+      const payload = this.paginatedPayload(data, { page, limit, total });
+
+      if (assignee) await setTaskCache(assignee, filters, payload);
+      res.status(200).json(payload);
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  private cacheAssignee(req: Request): string | null {
+    if (req.user!.role === 'MEMBER') return req.user!.sub;
+    const filterAssignee = (req.body as Record<string, unknown>)['assigneeId'];
+    return typeof filterAssignee === 'string' ? filterAssignee : null;
+  }
+
+  /** Result-affecting query params (assignee is the cache namespace, not a key). */
+  private cacheFilters(req: Request): Record<string, unknown> {
+    const b = req.body as Record<string, unknown>;
+    return {
+      page: b['page'] ?? null,
+      limit: b['limit'] ?? null,
+      status: b['status'] ?? null,
+      priority: b['priority'] ?? null,
+      projectId: b['projectId'] ?? null,
+      search: b['search'] ?? null,
+      orderBy: b['orderBy'] ?? null,
+      order: b['order'] ?? null,
+    };
+  }
+
+  protected async afterCreate(record: unknown) {
+    await this.invalidateFor(record);
+  }
+
+  protected async afterUpdate(record: unknown, _req: Request, previous?: unknown) {
+    await this.invalidateFor(record);
+    await this.invalidateFor(previous);
+  }
+
+  protected async afterDestroy(record: unknown) {
+    await this.invalidateFor(record);
+  }
+
+  private async invalidateFor(record: unknown) {
+    const assigneeId = (record as { assigneeId?: string | null } | null)?.assigneeId;
+    if (assigneeId) await invalidateTaskCache(assigneeId);
+  }
+
   updateStatus = async (req: Request, res: Response): Promise<void> => {
     const id = req.params['id'] as string;
     const next = (req.body as { status: TaskStatus }).status;
@@ -137,6 +191,18 @@ export class TaskController extends BaseController {
       data: { status: next },
       select: TASK_SELECT,
     });
+    await this.invalidateFor(updated);
+
+    if (updated.assigneeId) {
+      await publishTaskEvent(updated.assigneeId, 'task.status', {
+        taskId: updated.id,
+        title: updated.title,
+        from: task.status,
+        to: next,
+        projectId: updated.projectId,
+      });
+    }
+
     this.ok(res, updated);
   };
 }

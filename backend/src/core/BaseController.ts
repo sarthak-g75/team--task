@@ -22,7 +22,9 @@ export abstract class BaseController {
 
   protected async afterCreate(_record: unknown, _req: Request): Promise<void> {}
 
-  protected async afterUpdate(_record: unknown, _req: Request): Promise<void> {}
+  protected async afterUpdate(_record: unknown, _req: Request, _previous?: unknown): Promise<void> {}
+
+  protected async afterDestroy(_record: unknown, _req: Request): Promise<void> {}
 
   // ─── Override points ─────────────────────────────────────────────────────
 
@@ -82,30 +84,42 @@ export abstract class BaseController {
     if (!this.model) return next(new Error('index: no model provided'));
     try {
       await this.beforeAll(req);
-      const { page, limit, skip } = this.parsePagination(req.body);
-      const baseWhere = {
-        ...(await this.getWhereConditions(req)),
-        ...(await this.getAccessScope(req)),
-      };
-      const search = req.body.search as string | undefined;
-      const orderBy = this.parseOrderBy(req) ?? this.getDefaultOrderBy();
-      const select = this.getSelect();
-      const include = this.getInclude();
-
-      const where = this.buildSearchWhere(baseWhere, search);
-      const queryArgs: Record<string, unknown> = { where, skip, take: limit, orderBy };
-      if (select) queryArgs['select'] = select;
-      if (include && !select) queryArgs['include'] = include;
-
-      const [data, total] = await Promise.all([
-        this.model.findMany(queryArgs),
-        this.model.count({ where }),
-      ]);
-
-      this.paginated(res, data as unknown[], { page, limit, total });
+      const { data, page, limit, total } = await this.listPage(req);
+      this.paginated(res, data, { page, limit, total });
     } catch (err) {
       next(err);
     }
+  }
+
+  /**
+   * Run the list query (filters + access scope + search + pagination) and
+   * return the rows plus pagination counters. Separated from `index` so
+   * subclasses can wrap it (e.g. with caching) without re-implementing it.
+   */
+  protected async listPage(
+    req: Request,
+  ): Promise<{ data: unknown[]; page: number; limit: number; total: number }> {
+    const { page, limit, skip } = this.parsePagination(req.body);
+    const baseWhere = {
+      ...(await this.getWhereConditions(req)),
+      ...(await this.getAccessScope(req)),
+    };
+    const search = req.body.search as string | undefined;
+    const orderBy = this.parseOrderBy(req) ?? this.getDefaultOrderBy();
+    const select = this.getSelect();
+    const include = this.getInclude();
+
+    const where = this.buildSearchWhere(baseWhere, search);
+    const queryArgs: Record<string, unknown> = { where, skip, take: limit, orderBy };
+    if (select) queryArgs['select'] = select;
+    if (include && !select) queryArgs['include'] = include;
+
+    const [data, total] = await Promise.all([
+      this.model!.findMany(queryArgs),
+      this.model!.count({ where }),
+    ]);
+
+    return { data: data as unknown[], page, limit, total };
   }
 
   async show(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -173,7 +187,7 @@ export abstract class BaseController {
       if (include && !select) args['include'] = include;
 
       const record = await this.model.update(args);
-      await this.afterUpdate(record, req);
+      await this.afterUpdate(record, req, existing);
 
       this.ok(res, record);
     } catch (err) {
@@ -191,6 +205,7 @@ export abstract class BaseController {
       if (!existing) throw ApiError.notFound();
 
       await this.model.delete({ where: { id } });
+      await this.afterDestroy(existing, req);
 
       this.noContent(res);
     } catch (err) {
@@ -249,12 +264,11 @@ export abstract class BaseController {
     return res.status(204).send();
   }
 
-  protected paginated<T>(
-    res: Response,
+  protected paginatedPayload<T>(
     data: T[],
     meta: { page: number; limit: number; total: number },
   ) {
-    return res.status(200).json({
+    return {
       status: 200,
       data,
       meta: {
@@ -263,6 +277,14 @@ export abstract class BaseController {
         hasNext: meta.page * meta.limit < meta.total,
         hasPrev: meta.page > 1,
       },
-    });
+    };
+  }
+
+  protected paginated<T>(
+    res: Response,
+    data: T[],
+    meta: { page: number; limit: number; total: number },
+  ) {
+    return res.status(200).json(this.paginatedPayload(data, meta));
   }
 }
