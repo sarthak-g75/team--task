@@ -3,6 +3,7 @@ import { ApiError } from './ApiError.js';
 
 interface PrismaDelegate {
   findMany(args?: Record<string, unknown>): Promise<unknown[]>;
+  findFirst(args?: Record<string, unknown>): Promise<unknown | null>;
   count(args?: Record<string, unknown>): Promise<number>;
   findUnique(args: Record<string, unknown>): Promise<unknown | null>;
   create(args: Record<string, unknown>): Promise<unknown>;
@@ -46,11 +47,20 @@ export abstract class BaseController {
   }
 
   /**
-   * Build the Prisma `where` object from the request.
-   * Called automatically by index/show/update/destroy.
-   * Override to add scoping (e.g. filter by authenticated user, status, etc.)
+   * List-only filters built from the request (e.g. status/priority).
+   * Applied by `index`. Override to translate query params into a Prisma `where`.
    */
   protected async getWhereConditions(_req: Request): Promise<Record<string, unknown>> {
+    return {};
+  }
+
+  /**
+   * Row-level access scope applied to EVERY operation (index/show/update/destroy).
+   * Override to restrict which rows the caller may see or mutate
+   * (e.g. a MEMBER may only touch tasks assigned to them). Merged last, so it
+   * always wins over list filters.
+   */
+  protected async getAccessScope(_req: Request): Promise<Record<string, unknown>> {
     return {};
   }
 
@@ -73,7 +83,10 @@ export abstract class BaseController {
     try {
       await this.beforeAll(req);
       const { page, limit, skip } = this.parsePagination(req.body);
-      const baseWhere = await this.getWhereConditions(req);
+      const baseWhere = {
+        ...(await this.getWhereConditions(req)),
+        ...(await this.getAccessScope(req)),
+      };
       const search = req.body.search as string | undefined;
       const orderBy = this.parseOrderBy(req) ?? this.getDefaultOrderBy();
       const select = this.getSelect();
@@ -100,14 +113,15 @@ export abstract class BaseController {
     try {
       await this.beforeAll(req);
       const id = req.params['id'] as string;
+      const scope = await this.getAccessScope(req);
       const select = this.getSelect();
       const include = this.getInclude();
 
-      const args: Record<string, unknown> = { where: { id } };
+      const args: Record<string, unknown> = { where: { id, ...scope } };
       if (select) args['select'] = select;
       if (include && !select) args['include'] = include;
 
-      const record = await this.model.findUnique(args);
+      const record = await this.model.findFirst(args);
       if (!record) throw ApiError.notFound();
 
       this.ok(res, record);
@@ -144,7 +158,8 @@ export abstract class BaseController {
     try {
       await this.beforeAll(req);
       const id = req.params['id'] as string;
-      const existing = await this.model.findUnique({ where: { id } });
+      const scope = await this.getAccessScope(req);
+      const existing = await this.model.findFirst({ where: { id, ...scope } });
       if (!existing) throw ApiError.notFound();
 
       const body = req.body as Record<string, unknown>;
@@ -171,7 +186,8 @@ export abstract class BaseController {
     try {
       await this.beforeAll(req);
       const id = req.params['id'] as string;
-      const existing = await this.model.findUnique({ where: { id } });
+      const scope = await this.getAccessScope(req);
+      const existing = await this.model.findFirst({ where: { id, ...scope } });
       if (!existing) throw ApiError.notFound();
 
       await this.model.delete({ where: { id } });

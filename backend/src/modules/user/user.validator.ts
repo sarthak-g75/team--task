@@ -16,3 +16,14 @@ export const updateUserSchema = {
     role: z.enum(['ADMIN', 'MANAGER', 'MEMBER']).optional(),
   }),
 };
+
+export const listUserSchema = {
+  body: z.object({
+    page: z.coerce.number().int().positive().optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    role: z.enum(['ADMIN', 'MANAGER', 'MEMBER']).optional(),
+    search: z.string().optional(),
+    orderBy: z.union([z.string(), z.record(z.enum(['asc', 'desc']))]).optional(),
+    order: z.enum(['asc', 'desc']).optional(),
+  }),
+};
