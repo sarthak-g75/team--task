@@ -1,67 +1,23 @@
 import type { PrismaClient } from '@prisma/client';
 import { ApiError } from '../../core/ApiError.js';
-import { hashPassword, comparePassword } from '../../utils/password.js';
+import { comparePassword } from '../../utils/password.js';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../utils/jwt.js';
 import { env } from '../../config/env.js';
 
 export class AuthService {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async register(data: {
-    organizationName: string;
-    name: string;
-    email: string;
-    password: string;
-  }) {
-    const existing = await this.prisma.user.findUnique({ where: { email: data.email } });
-    if (existing) throw ApiError.conflict('Email already in use');
-
-    const slug = data.organizationName
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
-
-    const count = await this.prisma.organization.count({ where: { slug } });
-    const finalSlug = count > 0 ? `${slug}-${Date.now()}` : slug;
-
-    const passwordHash = await hashPassword(data.password);
-
-    return this.prisma.user.create({
-      data: {
-        name: data.name,
-        email: data.email,
-        passwordHash,
-        role: 'ADMIN',
-        organization: {
-          create: { name: data.organizationName, slug: finalSlug },
-        },
-      },
-      select: { id: true, email: true, name: true, role: true, organizationId: true },
-    });
-  }
-
   async login(email: string, password: string) {
     const user = await this.prisma.user.findUnique({
       where: { email },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        organizationId: true,
-        passwordHash: true,
-      },
+      select: { id: true, email: true, name: true, role: true, passwordHash: true },
     });
 
     if (!user || !(await comparePassword(password, user.passwordHash))) {
       throw ApiError.unauthorized('Invalid credentials');
     }
 
-    const accessToken = signAccessToken({
-      sub: user.id,
-      role: user.role,
-      orgId: user.organizationId,
-    });
+    const accessToken = signAccessToken({ sub: user.id, role: user.role });
     const refreshToken = signRefreshToken(user.id);
 
     await this.prisma.refreshToken.create({
@@ -79,7 +35,7 @@ export class AuthService {
   async refresh(token: string) {
     const stored = await this.prisma.refreshToken.findUnique({
       where: { token },
-      include: { user: { select: { id: true, role: true, organizationId: true } } },
+      include: { user: { select: { id: true, role: true } } },
     });
 
     if (!stored || stored.revokedAt || stored.expiresAt < new Date()) {
@@ -112,11 +68,7 @@ export class AuthService {
       },
     });
 
-    const accessToken = signAccessToken({
-      sub: stored.user.id,
-      role: stored.user.role,
-      orgId: stored.user.organizationId,
-    });
+    const accessToken = signAccessToken({ sub: stored.user.id, role: stored.user.role });
 
     return { accessToken, refreshToken: newRefresh };
   }

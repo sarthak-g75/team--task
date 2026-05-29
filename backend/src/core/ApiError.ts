@@ -26,7 +26,7 @@ export class ApiError extends Error {
     return new ApiError(403, 'FORBIDDEN', message);
   }
 
-  static notFound(resource: string) {
+  static notFound(resource = 'Resource') {
     return new ApiError(404, 'NOT_FOUND', `${resource} not found`);
   }
 

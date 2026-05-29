@@ -3,7 +3,7 @@ import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { authenticate } from '../../middleware/auth.middleware.js';
 import { prisma } from '../../config/database.js';
-import { registerSchema, loginSchema } from './auth.validator.js';
+import { loginSchema } from './auth.validator.js';
 
 export class AuthRouter extends BaseApiRoutes {
   constructor() {
@@ -12,13 +12,6 @@ export class AuthRouter extends BaseApiRoutes {
 
   protected initializeRoutes(): void {
     const controller = new AuthController(new AuthService(prisma));
-
-    this.addRoute({
-      method: 'post',
-      path: `${this.basePath}/register`,
-      handler: controller.register,
-      schema: registerSchema,
-    });
 
     this.addRoute({
       method: 'post',
