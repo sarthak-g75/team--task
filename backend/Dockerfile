@@ -20,7 +20,7 @@ ENV NODE_ENV=production
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
-COPY package.json prisma.config.ts ./
+COPY package.json prisma.config.ts openapi.yaml ./
 COPY docker-entrypoint.sh ./
 RUN chmod +x docker-entrypoint.sh
 

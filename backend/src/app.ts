@@ -5,15 +5,20 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { pinoHttp } from 'pino-http';
 import { rateLimit } from 'express-rate-limit';
+import swaggerUi from 'swagger-ui-express';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { requestId } from './middleware/requestId.middleware.js';
 import { errorMiddleware } from './middleware/error.middleware.js';
 import { apiRouter } from './routes/index.js';
+import { openapiSpec } from './docs/openapi.js';
 
 const mw = (fn: unknown) => fn as RequestHandler;
 
 const app = express();
+
+app.get('/api/openapi.json', (_req, res) => res.json(openapiSpec));
+app.use('/api/docs', mw(swaggerUi.serve), mw(swaggerUi.setup(openapiSpec, { customSiteTitle: 'Team Task Tracker API' })));
 
 app.use(mw(helmet()));
 app.use(

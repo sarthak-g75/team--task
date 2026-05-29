@@ -1,11 +1,36 @@
 import type { PrismaClient } from '@prisma/client';
 import { ApiError } from '../../core/ApiError.js';
-import { comparePassword } from '../../utils/password.js';
+import { comparePassword, hashPassword } from '../../utils/password.js';
 import { signAccessToken, signRefreshToken, verifyRefreshToken } from '../../utils/jwt.js';
 import { env } from '../../config/env.js';
 
 export class AuthService {
   constructor(private readonly prisma: PrismaClient) {}
+
+  async register(name: string, email: string, password: string) {
+    const existing = await this.prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (existing) throw ApiError.conflict('Email already in use');
+
+    const isFirstUser = (await this.prisma.user.count()) === 0;
+    const passwordHash = await hashPassword(password);
+
+    const user = await this.prisma.user.create({
+      data: { name, email, passwordHash, role: isFirstUser ? 'ADMIN' : 'MEMBER' },
+      select: { id: true, email: true, name: true, role: true },
+    });
+
+    const accessToken = signAccessToken({ sub: user.id, role: user.role });
+    const refreshToken = signRefreshToken(user.id);
+    await this.prisma.refreshToken.create({
+      data: {
+        token: refreshToken,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      },
+    });
+
+    return { accessToken, refreshToken, user };
+  }
 
   async login(email: string, password: string) {
     const user = await this.prisma.user.findUnique({

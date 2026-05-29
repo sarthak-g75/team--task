@@ -1,6 +1,7 @@
+import { useBoardDnd } from './dndContext';
 import { useUpdateStatus } from '@/lib/queries';
-import { errorMessage } from '@/lib/api';
 import { useToast } from '@/stores/toast';
+import { errorMessage } from '@/lib/api';
 import { TRANSITIONS, STATUS_LABEL } from '@/lib/types';
 import type { Priority, Task } from '@/lib/types';
 import { cn } from '@/lib/utils';
@@ -17,13 +18,37 @@ function isOverdue(task: Task): boolean {
 }
 
 export function TaskCard({ task, assigneeName }: { task: Task; assigneeName?: string }) {
+  const { dragging, startDrag, endDrag } = useBoardDnd();
   const updateStatus = useUpdateStatus();
   const toast = useToast((s) => s.push);
-  const nextStates = TRANSITIONS[task.status];
+
   const overdue = isOverdue(task);
+  const isDragging = dragging?.id === task.id;
+  const nextStates = TRANSITIONS[task.status];
+
+  const move = (status: Task['status']) =>
+    updateStatus.mutate(
+      { id: task.id, status },
+      {
+        onSuccess: () => toast(`"${task.title}" → ${STATUS_LABEL[status]}`, 'success'),
+        onError: (err) => toast(errorMessage(err, 'Status change failed'), 'error'),
+      },
+    );
 
   return (
-    <div className="space-y-2 rounded-lg border bg-card p-3 shadow-sm">
+    <div
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData('text/plain', task.id);
+        e.dataTransfer.effectAllowed = 'move';
+        startDrag(task);
+      }}
+      onDragEnd={endDrag}
+      className={cn(
+        'cursor-grab space-y-2 rounded-lg border bg-card p-3 shadow-sm active:cursor-grabbing',
+        isDragging && 'opacity-40',
+      )}
+    >
       <div className="flex items-start justify-between gap-2">
         <p className="text-sm font-medium leading-snug">{task.title}</p>
         <span
@@ -52,20 +77,15 @@ export function TaskCard({ task, assigneeName }: { task: Task; assigneeName?: st
       {nextStates.length > 0 && (
         <select
           aria-label="Change status"
-          className="w-full rounded-md border bg-background px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
           value=""
           disabled={updateStatus.isPending}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
           onChange={(e) => {
             const status = e.target.value as Task['status'];
-            if (!status) return;
-            updateStatus.mutate(
-              { id: task.id, status },
-              {
-                onSuccess: () => toast(`"${task.title}" → ${STATUS_LABEL[status]}`, 'success'),
-                onError: (err) => toast(errorMessage(err, 'Status change failed'), 'error'),
-              },
-            );
+            if (status) move(status);
           }}
+          className="w-full rounded-md border bg-background px-2 py-1 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
         >
           <option value="">Move to…</option>
           {nextStates.map((s) => (

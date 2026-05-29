@@ -21,6 +21,7 @@ const TASK_SELECT = {
   priority: true,
   status: true,
   dueDate: true,
+  completedAt: true,
   projectId: true,
   assigneeId: true,
   createdById: true,
@@ -186,7 +187,7 @@ export class TaskController extends BaseController {
 
     const updated = await prisma.task.update({
       where: { id },
-      data: { status: next },
+      data: { status: next, completedAt: next === 'DONE' ? new Date() : null },
       select: TASK_SELECT,
     });
     await this.invalidateFor(updated);

@@ -8,6 +8,16 @@ export class AuthController extends BaseController {
     super();
   }
 
+  register = async (req: Request, res: Response) => {
+    const { accessToken, refreshToken, user } = await this.authService.register(
+      req.body.name,
+      req.body.email,
+      req.body.password,
+    );
+    res.cookie('refreshToken', refreshToken, this.authService.refreshCookieOptions());
+    return this.created(res, { accessToken, user });
+  };
+
   login = async (req: Request, res: Response) => {
     const { accessToken, refreshToken, user } = await this.authService.login(
       req.body.email,

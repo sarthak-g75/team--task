@@ -82,6 +82,17 @@ export function useUpdateStatus() {
       const res = await api.patch<ItemResponse<Task>>(`/tasks/${id}/status`, { status });
       return res.data.data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+    onMutate: async ({ id, status }) => {
+      await qc.cancelQueries({ queryKey: ['tasks'] });
+      const previous = qc.getQueriesData<Task[]>({ queryKey: ['tasks'] });
+      qc.setQueriesData<Task[]>({ queryKey: ['tasks'] }, (old) =>
+        old?.map((t) => (t.id === id ? { ...t, status } : t)),
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      ctx?.previous?.forEach(([key, data]) => qc.setQueryData(key, data));
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
   });
 }

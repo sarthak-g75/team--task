@@ -167,6 +167,7 @@ controllers. RBAC is layered on at the route level via middleware.
 | View / update **any** task | ✅ | ✅ | — |
 | View / update tasks **assigned to them** | ✅ | ✅ | ✅ |
 | Change task status | ✅ | ✅ | assignee only |
+| View analytics | ✅ | ✅ | — |
 
 **Where RBAC lives:** *role* checks are enforced in the `requireRole(...)`
 **middleware** (not in controllers), as required. *Ownership* rules (e.g. "a MEMBER
@@ -179,10 +180,11 @@ via `BaseController.getAccessScope()` and the task `beforeSave` hook.
 
 Base URL: `/api`. All non-auth routes require `Authorization: Bearer <accessToken>`.
 
-> 📮 A ready-to-run **[Postman collection](postman_collection.json)** is included. Import
-> it, run **Auth → Login** (the access token is captured automatically), then
-> **Projects → Create** and **Tasks → Create** (ids are captured into variables) — the
-> rest of the requests chain without any manual editing.
+> 📘 **Interactive API docs (Swagger UI):** with the stack running, open
+> **http://localhost:8080/api/docs**. The raw OpenAPI spec is served at
+> `/api/openapi.json` and committed as [`backend/openapi.yaml`](backend/openapi.yaml).
+> Click **Authorize**, paste an access token from `POST /auth/login`, and try any
+> endpoint.
 
 > **List convention:** list endpoints are `POST /<resource>/all` with filters and
 > pagination in the JSON body (not `GET` query strings). This keeps complex,
@@ -192,9 +194,21 @@ Base URL: `/api`. All non-auth routes require `Authorization: Bearer <accessToke
 ### Auth
 | Method | Path | Access | Body |
 |---|---|---|---|
+| POST | `/auth/register` | public | `{ name, email, password }` |
 | POST | `/auth/login` | public | `{ email, password }` |
 | POST | `/auth/refresh` | refresh cookie | — |
 | POST | `/auth/logout` | authenticated | — |
+
+The **first** registered user (empty database) is bootstrapped as `ADMIN`; everyone
+else registers as `MEMBER`. Public signup can't self-assign a privileged role.
+
+### Analytics
+| Method | Path | Access |
+|---|---|---|
+| GET | `/analytics/overview` | ADMIN, MANAGER |
+
+Returns overdue task count per user and average completion time (overall + per user),
+computed with SQL aggregation over a `completedAt` timestamp set when a task enters `DONE`.
 
 ### Users (ADMIN-managed)
 | Method | Path | Access |
@@ -380,9 +394,10 @@ These are intentional scope choices for a 3-day build; each is easy to extend.
   entity). This removes an `orgId` from every model, query, and access check, keeping
   the RBAC and caching layers focused. Multi-tenancy is the first thing I'd add back
   (see below).
-- **Admin-provisioned users (no public registration).** Users are created by an ADMIN
-  via `POST /users` rather than self-service signup, modeling controlled team
-  membership. The seeded admin bootstraps the system.
+- **Registration + admin provisioning.** Public `POST /auth/register` creates `MEMBER`
+  accounts (the first user on an empty database bootstraps as `ADMIN`); admins can also
+  create users (including MANAGERs) via `POST /users`. Public signup never self-assigns
+  a privileged role.
 - **`POST /<resource>/all` for lists.** Filters/pagination travel in the JSON body and
   are validated by the same zod layer as everything else, avoiding ad-hoc query-string
   parsing. The tradeoff is that it's less "RESTful" than `GET ?status=...`.
@@ -390,9 +405,9 @@ These are intentional scope choices for a 3-day build; each is easy to extend.
   (`requireRole`); assignee-level ownership is data-level authorization
   (`getAccessScope`). Keeping them separate keeps the middleware role-only, as the
   brief requires.
-- **Bonus features**: real-time SSE notifications, integration tests (RBAC + status
-  state machine), and a React task board ([`frontend/`](frontend/README.md)) are
-  implemented; an analytics endpoint is not (yet).
+- **Bonus features**: all four are implemented — analytics endpoint, real-time SSE
+  notifications, integration tests (RBAC + status state machine), and a React task
+  board ([`frontend/`](frontend/README.md)).
 
 ---
 
@@ -402,12 +417,6 @@ These are intentional scope choices for a 3-day build; each is easy to extend.
   by `orgId`, and set tenancy at user creation.
 - **More test coverage**: the critical flows (RBAC matrix, status state machine) have
   integration tests; I'd extend coverage to auth/refresh rotation and the cache layer.
-- **OpenAPI spec**: generate a Swagger/OpenAPI document (a Postman collection is
-  already included; an OpenAPI spec would add schema-level validation and a live
-  Swagger UI).
-- **Analytics endpoint**: overdue tasks per user and average completion time (the
-  schema already supports this with a `completedAt` addition).
 - **Hardening**: per-user rate limiting, refresh-token family/device tracking, and
   structured audit logging of mutations.
 - **Field-level task permissions**: finer control over which fields a MEMBER may edit.
-```

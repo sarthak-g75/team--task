@@ -9,8 +9,10 @@ TypeScript**, TanStack Query, Zustand, React Router, and Tailwind v4.
   refresh-token rotation on `401`.
 - **Kanban board** — five columns (To Do / In Progress / In Review / Done / Blocked)
   with task cards showing priority, assignee, and due date (overdue highlighted).
-- **Status transitions** — each card only offers the moves the server's state machine
-  allows; invalid moves can't be selected.
+- **Drag-and-drop status changes** — drag a card between columns to change its status.
+  Only columns that are valid transitions (per the server's state machine) are
+  drop-enabled and highlighted; invalid targets dim. Updates are optimistic and
+  roll back if the server rejects them.
 - **Projects** — create a project (ADMIN/MANAGER) and filter the board by project.
 - **Create task** dialog (ADMIN/MANAGER) with project + assignee pickers.
 - **Real-time updates** — subscribes to the backend SSE stream and live-refreshes the
@@ -40,3 +42,19 @@ Sign in with the seeded admin: `admin@example.com` / `Admin@12345`.
 npm run build     # tsc -b && vite build  ->  dist/
 npm run preview
 ```
+
+## Structure
+
+```
+src/
+├── pages/            Login, Board (composition only)
+├── components/
+│   ├── board/        TaskCard (draggable), BoardColumn (droppable),
+│   │                 BoardDndProvider + dndContext (drag state + valid-target rules)
+│   ├── Header, Toaster, CreateTaskDialog, CreateProjectDialog
+│   └── ui/           shadcn primitives
+├── hooks/            useBoard (data + grouping), useTaskEvents (SSE)
+├── lib/              api (axios + refresh), queries (TanStack Query), types
+└── stores/           auth, toast (Zustand)
+```
+
