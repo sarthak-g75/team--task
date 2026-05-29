@@ -34,8 +34,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    # Sensible dev defaults so `docker compose up` works with zero setup.
-    # Override any value via the shell environment or a local .env file.
     environment:
       NODE_ENV: production
       PORT: 8080

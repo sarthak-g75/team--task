@@ -1,14 +1,9 @@
 import { api, auth, createUser, login, resetDb, teardown } from './helpers.js';
 
-/**
- * Critical flow #2 — Task status state machine.
- * TODO → IN_PROGRESS → IN_REVIEW → DONE; BLOCKED from any active state;
- * DONE terminal. Only the assignee or a MANAGER/ADMIN may advance status.
- */
 describe('Task status transitions', () => {
   let managerToken: string;
-  let maryToken: string; // assignee
-  let bobToken: string; // not assignee
+  let maryToken: string;
+  let bobToken: string;
   let maryId: string;
   let projectId: string;
 
@@ -46,7 +41,7 @@ describe('Task status transitions', () => {
       .set(auth(managerToken))
       .send({ title: 'Fresh', projectId, assigneeId: maryId, status: 'DONE' });
     expect(res.status).toBe(201);
-    expect(res.body.data.status).toBe('TODO'); // status in body is ignored
+    expect(res.body.data.status).toBe('TODO');
   });
 
   it('rejects an illegal skip TODO → DONE with 409 INVALID_TRANSITION', async () => {

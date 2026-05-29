@@ -41,7 +41,6 @@ export class TaskController extends BaseController {
     return ['title', 'description'];
   }
 
-  /** List filters (status/priority/assignee/project) for the index endpoint. */
   protected async getWhereConditions(req: Request) {
     const body = req.body as Record<string, unknown>;
     const where: Record<string, unknown> = {};
@@ -128,7 +127,6 @@ export class TaskController extends BaseController {
     return typeof filterAssignee === 'string' ? filterAssignee : null;
   }
 
-  /** Result-affecting query params (assignee is the cache namespace, not a key). */
   private cacheFilters(req: Request): Record<string, unknown> {
     const b = req.body as Record<string, unknown>;
     return {
@@ -193,15 +191,13 @@ export class TaskController extends BaseController {
     });
     await this.invalidateFor(updated);
 
-    if (updated.assigneeId) {
-      await publishTaskEvent(updated.assigneeId, 'task.status', {
-        taskId: updated.id,
-        title: updated.title,
-        from: task.status,
-        to: next,
-        projectId: updated.projectId,
-      });
-    }
+    await publishTaskEvent(updated.assigneeId, 'task.status', {
+      taskId: updated.id,
+      title: updated.title,
+      from: task.status,
+      to: next,
+      projectId: updated.projectId,
+    });
 
     this.ok(res, updated);
   };

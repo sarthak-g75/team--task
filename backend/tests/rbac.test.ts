@@ -1,15 +1,10 @@
 import { api, auth, createUser, login, resetDb, teardown } from './helpers.js';
 
-/**
- * Critical flow #1 — Role-based access control.
- * Verifies the ADMIN / MANAGER / MEMBER permission matrix and MEMBER
- * assignee-level ownership scoping.
- */
 describe('RBAC', () => {
   let adminToken: string;
   let managerToken: string;
-  let maryToken: string; // MEMBER, assignee
-  let bobToken: string; // MEMBER, not assignee
+  let maryToken: string;
+  let bobToken: string;
   let maryId: string;
   let projectId: string;
   let maryTaskId: string;
@@ -27,7 +22,6 @@ describe('RBAC', () => {
     maryToken = await login('mary@test.io');
     bobToken = await login('bob@test.io');
 
-    // MANAGER creates a project and a task assigned to Mary.
     const proj = await api
       .post('/api/projects')
       .set(auth(managerToken))
@@ -69,7 +63,6 @@ describe('RBAC', () => {
     });
 
     it('only sees tasks assigned to them', async () => {
-      // A second task assigned to the manager must not appear in Mary's list.
       await api
         .post('/api/tasks')
         .set(auth(managerToken))
@@ -110,12 +103,18 @@ describe('RBAC', () => {
   });
 
   describe('MANAGER and ADMIN', () => {
-    it('MANAGER can create projects and tasks but cannot manage users', async () => {
+    it('MANAGER can create projects and read the roster, but cannot manage users', async () => {
       const proj = await api.post('/api/projects').set(auth(managerToken)).send({ name: 'Beta' });
       expect(proj.status).toBe(201);
 
       const users = await api.post('/api/users/all').set(auth(managerToken)).send({});
-      expect(users.status).toBe(403);
+      expect(users.status).toBe(200);
+
+      const create = await api
+        .post('/api/users')
+        .set(auth(managerToken))
+        .send({ name: 'X', email: 'x@test.io', password: 'Passw0rd!', role: 'MEMBER' });
+      expect(create.status).toBe(403);
     });
 
     it('ADMIN can manage users', async () => {

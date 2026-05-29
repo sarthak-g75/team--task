@@ -1,73 +1,42 @@
-# React + TypeScript + Vite
+# Task Tracker — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A minimal task board for the Team Task Tracker API. Built with **React 19 + Vite +
+TypeScript**, TanStack Query, Zustand, React Router, and Tailwind v4.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Login** (JWT) with the seeded admin, token persisted in `localStorage`, automatic
+  refresh-token rotation on `401`.
+- **Kanban board** — five columns (To Do / In Progress / In Review / Done / Blocked)
+  with task cards showing priority, assignee, and due date (overdue highlighted).
+- **Status transitions** — each card only offers the moves the server's state machine
+  allows; invalid moves can't be selected.
+- **Projects** — create a project (ADMIN/MANAGER) and filter the board by project.
+- **Create task** dialog (ADMIN/MANAGER) with project + assignee pickers.
+- **Real-time updates** — subscribes to the backend SSE stream and live-refreshes the
+  board (with a toast) when a task changes status. Members see updates for their own
+  tasks; admins/managers see all of them.
+- Role-aware UI: the "New task" button only appears for ADMIN/MANAGER.
 
-## React Compiler
+## Run
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+The backend must be running first (`cd ../backend && docker compose up`).
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+cd frontend
+cp .env.example .env      # VITE_API_URL=http://localhost:8080/api (default)
+npm install
+npm run dev               # http://localhost:5173
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Sign in with the seeded admin: `admin@example.com` / `Admin@12345`.
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+> The backend's `CORS_ORIGINS` includes `http://localhost:5173` by default. If you run
+> the frontend on a different port, add it to `CORS_ORIGINS` in the backend env.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Build
+
+```bash
+npm run build     # tsc -b && vite build  ->  dist/
+npm run preview
 ```

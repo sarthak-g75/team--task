@@ -14,7 +14,7 @@ export class UserRouter extends BaseApiRoutes {
     const controller = new UserController();
 
     this.addRestRoutes(controller, {
-      index: [authenticate, requireRole('ADMIN'), validate(listUserSchema)],
+      index: [authenticate, requireRole('ADMIN', 'MANAGER'), validate(listUserSchema)],
       show: [authenticate, requireRole('ADMIN', 'MANAGER')],
       create: [authenticate, requireRole('ADMIN'), validate(createUserSchema)],
       update: [authenticate, requireRole('ADMIN'), validate(updateUserSchema)],

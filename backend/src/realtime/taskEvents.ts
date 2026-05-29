@@ -1,5 +1,6 @@
 import { Redis } from 'ioredis';
 import type { Response } from 'express';
+import type { Role } from '@prisma/client';
 import { env } from '../config/env.js';
 import { logger } from '../config/logger.js';
 import { redis } from '../config/redis.js';
@@ -7,12 +8,18 @@ import { redis } from '../config/redis.js';
 const CHANNEL = 'task-events';
 
 interface TaskEventMessage {
-  userId: string;
+  assigneeId: string | null;
   event: string;
   data: unknown;
 }
 
-const clients = new Map<string, Set<Response>>();
+interface SseClient {
+  res: Response;
+  userId: string;
+  role: Role;
+}
+
+const clients = new Set<SseClient>();
 
 let subscriber: Redis | null = null;
 
@@ -23,8 +30,8 @@ export async function initTaskEvents(): Promise<void> {
   await subscriber.subscribe(CHANNEL);
   subscriber.on('message', (_channel: string, message: string) => {
     try {
-      const { userId, event, data } = JSON.parse(message) as TaskEventMessage;
-      fanout(userId, event, data);
+      const { assigneeId, event, data } = JSON.parse(message) as TaskEventMessage;
+      fanout(assigneeId, event, data);
     } catch (err) {
       logger.error({ err }, 'failed to handle task-event message');
     }
@@ -36,34 +43,29 @@ export async function closeTaskEvents(): Promise<void> {
   if (subscriber) await subscriber.quit();
 }
 
-export function addClient(userId: string, res: Response): () => void {
-  let set = clients.get(userId);
-  if (!set) {
-    set = new Set();
-    clients.set(userId, set);
-  }
-  set.add(res);
-
+export function addClient(userId: string, role: Role, res: Response): () => void {
+  const client: SseClient = { res, userId, role };
+  clients.add(client);
   return () => {
-    const current = clients.get(userId);
-    if (!current) return;
-    current.delete(res);
-    if (current.size === 0) clients.delete(userId);
+    clients.delete(client);
   };
 }
 
 export async function publishTaskEvent(
-  userId: string,
+  assigneeId: string | null,
   event: string,
   data: unknown,
 ): Promise<void> {
-  const message: TaskEventMessage = { userId, event, data };
+  const message: TaskEventMessage = { assigneeId, event, data };
   await redis.publish(CHANNEL, JSON.stringify(message));
 }
 
-function fanout(userId: string, event: string, data: unknown): void {
-  const set = clients.get(userId);
-  if (!set) return;
+function fanout(assigneeId: string | null, event: string, data: unknown): void {
   const frame = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-  for (const res of set) res.write(frame);
+  for (const client of clients) {
+    const isManager = client.role === 'ADMIN' || client.role === 'MANAGER';
+    if (isManager || client.userId === assigneeId) {
+      client.res.write(frame);
+    }
+  }
 }

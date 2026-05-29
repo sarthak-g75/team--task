@@ -14,8 +14,6 @@ interface PrismaDelegate {
 export abstract class BaseController {
   constructor(protected readonly model?: PrismaDelegate) {}
 
-  // ─── Lifecycle hooks (override in subclasses) ────────────────────────────
-
   protected async beforeAll(_req: Request): Promise<void> {}
 
   protected async beforeSave(_data: unknown, _method: 'create' | 'update', _req: Request): Promise<void> {}
@@ -26,50 +24,30 @@ export abstract class BaseController {
 
   protected async afterDestroy(_record: unknown, _req: Request): Promise<void> {}
 
-  // ─── Override points ─────────────────────────────────────────────────────
-
-  /** Fields to return. Return undefined for all fields. */
   protected getSelect(): Record<string, boolean> | undefined {
     return undefined;
   }
 
-  /** Prisma include for relations. */
   protected getInclude(): Record<string, boolean> | undefined {
     return undefined;
   }
 
-  /** Fields that support full-text search (req.body.search). */
   protected getSearchableFields(): string[] {
     return [];
   }
 
-  /** Default sort applied when the request does not specify one. */
   protected getDefaultOrderBy(): Record<string, 'asc' | 'desc'> {
     return { createdAt: 'desc' };
   }
 
-  /**
-   * List-only filters built from the request (e.g. status/priority).
-   * Applied by `index`. Override to translate query params into a Prisma `where`.
-   */
   protected async getWhereConditions(_req: Request): Promise<Record<string, unknown>> {
     return {};
   }
 
-  /**
-   * Row-level access scope applied to EVERY operation (index/show/update/destroy).
-   * Override to restrict which rows the caller may see or mutate
-   * (e.g. a MEMBER may only touch tasks assigned to them). Merged last, so it
-   * always wins over list filters.
-   */
   protected async getAccessScope(_req: Request): Promise<Record<string, unknown>> {
     return {};
   }
 
-  /**
-   * Transform incoming body before a create or update.
-   * Override to hash passwords, set computed fields, etc.
-   */
   protected async transformData(
     data: Record<string, unknown>,
     _method: 'create' | 'update',
@@ -77,8 +55,6 @@ export abstract class BaseController {
   ): Promise<Record<string, unknown>> {
     return data;
   }
-
-  // ─── Fully-implemented CRUD ───────────────────────────────────────────────
 
   async index(req: Request, res: Response, next: NextFunction): Promise<void> {
     if (!this.model) return next(new Error('index: no model provided'));
@@ -91,11 +67,6 @@ export abstract class BaseController {
     }
   }
 
-  /**
-   * Run the list query (filters + access scope + search + pagination) and
-   * return the rows plus pagination counters. Separated from `index` so
-   * subclasses can wrap it (e.g. with caching) without re-implementing it.
-   */
   protected async listPage(
     req: Request,
   ): Promise<{ data: unknown[]; page: number; limit: number; total: number }> {
@@ -212,8 +183,6 @@ export abstract class BaseController {
       next(err);
     }
   }
-
-  // ─── Helpers ─────────────────────────────────────────────────────────────
 
   protected parsePagination(body: Record<string, unknown>, maxLimit = 100) {
     const page = Math.max(1, Number(body['page']) || 1);

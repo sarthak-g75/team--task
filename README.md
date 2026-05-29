@@ -106,6 +106,12 @@ npm test
 
 The suite runs serially (`--runInBand`) and truncates tables between suites.
 
+### Frontend (optional)
+
+A React task board lives in [`frontend/`](frontend/README.md). With the backend
+running: `cd frontend && npm install && npm run dev`, then open http://localhost:5173
+and sign in with the seeded admin.
+
 ---
 
 ## Architecture
@@ -153,7 +159,8 @@ controllers. RBAC is layered on at the route level via middleware.
 
 | Capability | ADMIN | MANAGER | MEMBER |
 |---|:---:|:---:|:---:|
-| Manage users | ✅ | — | — |
+| Manage users (create/update/delete) | ✅ | — | — |
+| View team roster (list users) | ✅ | ✅ | — |
 | Manage projects (create/update/delete) | ✅ | ✅ | — |
 | View projects | ✅ | ✅ | ✅ |
 | Create / delete tasks, assign members | ✅ | ✅ | — |
@@ -192,7 +199,7 @@ Base URL: `/api`. All non-auth routes require `Authorization: Bearer <accessToke
 ### Users (ADMIN-managed)
 | Method | Path | Access |
 |---|---|---|
-| POST | `/users/all` | ADMIN |
+| POST | `/users/all` | ADMIN, MANAGER |
 | GET | `/users/:id` | ADMIN, MANAGER |
 | POST | `/users` | ADMIN |
 | PUT | `/users/:id` | ADMIN |
@@ -302,7 +309,10 @@ which is harmless because they can never be read again.
 ## Real-time notifications (SSE)
 
 Clients subscribe to `GET /api/notifications/stream` and receive a `task.status`
-event the moment a task **assigned to them** transitions status:
+event the moment a relevant task transitions status. **Delivery is role-aware:** a
+MEMBER is notified about tasks **assigned to them** (per the brief), while an
+ADMIN/MANAGER receives **all** task status events so their board — which shows every
+task — stays live.
 
 ```bash
 curl -N "http://localhost:8080/api/notifications/stream?access_token=$TOKEN"
@@ -316,7 +326,8 @@ data: {"taskId":"...","title":"...","from":"TODO","to":"IN_PROGRESS","projectId"
 
 **Event-driven design.** Status changes are published to a **Redis pub/sub** channel,
 not a process-local emitter. Each backend instance keeps an in-memory registry of the
-SSE connections it holds and delivers only the messages addressed to those users.
+SSE connections it holds and applies the role-aware delivery rule above when fanning
+out a message.
 Because delivery rides on Redis, a notification published by one instance reaches a
 client connected to any other instance — so this scales horizontally without sticky
 sessions. SSE (vs. WebSocket) keeps it a plain one-way HTTP stream: no upgrade
@@ -379,9 +390,9 @@ These are intentional scope choices for a 3-day build; each is easy to extend.
   (`requireRole`); assignee-level ownership is data-level authorization
   (`getAccessScope`). Keeping them separate keeps the middleware role-only, as the
   brief requires.
-- **Bonus features**: real-time SSE notifications and integration tests (RBAC +
-  status state machine) are implemented; an analytics endpoint and a frontend board
-  are not (yet).
+- **Bonus features**: real-time SSE notifications, integration tests (RBAC + status
+  state machine), and a React task board ([`frontend/`](frontend/README.md)) are
+  implemented; an analytics endpoint is not (yet).
 
 ---
 

@@ -15,7 +15,7 @@ export class NotificationController {
     const userId = req.user!.sub;
     res.write(`event: connected\ndata: ${JSON.stringify({ userId })}\n\n`);
 
-    const remove = addClient(userId, res);
+    const remove = addClient(userId, req.user!.role, res);
     const heartbeat = setInterval(() => res.write(': ping\n\n'), HEARTBEAT_MS);
 
     req.on('close', () => {
