@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { useCreateTask, useProjects, useUsers } from '@/lib/queries';
 import { errorMessage } from '@/lib/api';
 import { useToast } from '@/stores/toast';
+import { RichTextEditor } from '@/components/editor/RichTextEditor';
 import { PRIORITIES } from '@/lib/types';
 import type { Priority } from '@/lib/types';
+import { htmlToText } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
 export function CreateTaskDialog({ onClose }: { onClose: () => void }) {
@@ -24,11 +26,12 @@ export function CreateTaskDialog({ onClose }: { onClose: () => void }) {
     e.preventDefault();
     setError(null);
     try {
+      const hasDescription = htmlToText(description).length > 0;
       await createTask.mutateAsync({
         title,
         priority,
         projectId,
-        ...(description ? { description } : {}),
+        ...(hasDescription ? { description } : {}),
         ...(assigneeId ? { assigneeId } : {}),
         ...(dueDate ? { dueDate } : {}),
       });
@@ -59,13 +62,7 @@ export function CreateTaskDialog({ onClose }: { onClose: () => void }) {
           onChange={(e) => setTitle(e.target.value)}
           required
         />
-        <textarea
-          className={field}
-          placeholder="Description (optional)"
-          rows={2}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-        />
+        <RichTextEditor value={description} onChange={setDescription} />
 
         <div className="grid grid-cols-2 gap-3">
           <select className={field} value={priority} onChange={(e) => setPriority(e.target.value as Priority)}>

@@ -75,6 +75,35 @@ export function useCreateTask() {
   });
 }
 
+export interface UpdateTaskInput {
+  title?: string;
+  description?: string | null;
+  priority?: Priority;
+  assigneeId?: string | null;
+  dueDate?: string | null;
+}
+
+export function useUpdateTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: UpdateTaskInput }) => {
+      const res = await api.put<ItemResponse<Task>>(`/tasks/${id}`, data);
+      return res.data.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  });
+}
+
+export function useDeleteTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/tasks/${id}`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  });
+}
+
 export function useUpdateStatus() {
   const qc = useQueryClient();
   return useMutation({

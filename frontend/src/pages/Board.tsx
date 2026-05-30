@@ -15,7 +15,7 @@ export default function Board() {
   const canManage = user?.role === 'ADMIN' || user?.role === 'MANAGER';
 
   const [selectedProjectId, setSelectedProjectId] = useState('');
-  const { projects, byStatus, assigneeName, isLoading, isError } = useBoard(selectedProjectId);
+  const { projects, byStatus, userName, isLoading, isError } = useBoard(selectedProjectId);
 
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [projectDialogOpen, setProjectDialogOpen] = useState(false);
@@ -57,7 +57,7 @@ export default function Board() {
                   key={status}
                   status={status}
                   tasks={byStatus[status]}
-                  assigneeName={assigneeName}
+                  userName={userName}
                 />
               ))}
             </div>

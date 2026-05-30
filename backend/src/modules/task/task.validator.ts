@@ -10,7 +10,7 @@ const futureDate = z.coerce
 export const createTaskSchema = {
   body: z.object({
     title: z.string().min(1).max(200),
-    description: z.string().max(2000).optional(),
+    description: z.string().max(20000).optional(),
     priority: z.enum(PRIORITY).default('MEDIUM'),
     projectId: z.string().min(1),
     assigneeId: z.string().min(1).optional(),
@@ -21,7 +21,7 @@ export const createTaskSchema = {
 export const updateTaskSchema = {
   body: z.object({
     title: z.string().min(1).max(200).optional(),
-    description: z.string().max(2000).nullable().optional(),
+    description: z.string().max(20000).nullable().optional(),
     priority: z.enum(PRIORITY).optional(),
     projectId: z.string().min(1).optional(),
     assigneeId: z.string().min(1).nullable().optional(),

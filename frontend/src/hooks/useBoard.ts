@@ -10,11 +10,11 @@ export function useBoard(projectId: string) {
   const { data: projects } = useProjects();
   const { data: users } = useUsers();
 
-  const assigneeName = useMemo(() => {
+  const userName = useMemo(() => {
     const map = new Map<string, string>();
     users?.forEach((u) => map.set(u.id, u.name));
     if (user) map.set(user.id, user.name);
-    return (id: string | null) => (id ? (map.get(id) ?? 'Assigned') : 'Unassigned');
+    return (id: string | null) => (id ? (map.get(id) ?? 'A teammate') : 'Unassigned');
   }, [users, user]);
 
   const byStatus = useMemo(() => {
@@ -26,5 +26,5 @@ export function useBoard(projectId: string) {
     return groups;
   }, [tasks]);
 
-  return { projects, byStatus, assigneeName, isLoading, isError };
+  return { projects, byStatus, userName, isLoading, isError };
 }

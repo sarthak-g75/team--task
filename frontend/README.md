@@ -13,6 +13,12 @@ TypeScript**, TanStack Query, Zustand, React Router, and Tailwind v4.
   Only columns that are valid transitions (per the server's state machine) are
   drop-enabled and highlighted; invalid targets dim. Updates are optimistic and
   roll back if the server rejects them.
+- **Jira-style task modal** — click a card to open a two-column modal: title +
+  description on the left, a details sidebar (status, **assignee** and **reporter/owner**
+  with avatars, priority, due date, timestamps) on the right. Status changes and editing
+  live here; ADMIN/MANAGER can also delete.
+- **Rich-text descriptions** — a TipTap WYSIWYG editor (bold/italic/headings/lists/code)
+  for creating and editing; descriptions render formatted when viewing.
 - **Projects** — create a project (ADMIN/MANAGER) and filter the board by project.
 - **Create task** dialog (ADMIN/MANAGER) with project + assignee pickers.
 - **Real-time updates** — subscribes to the backend SSE stream and live-refreshes the
@@ -49,8 +55,9 @@ npm run preview
 src/
 ├── pages/            Login, Board (composition only)
 ├── components/
-│   ├── board/        TaskCard (draggable), BoardColumn (droppable),
-│   │                 BoardDndProvider + dndContext (drag state + valid-target rules)
+│   ├── board/        TaskCard (draggable, opens modal), BoardColumn (droppable),
+│   │                 TaskModal (detail/edit + status), DnD context/provider
+│   ├── editor/       RichTextEditor + RichTextViewer (TipTap WYSIWYG)
 │   ├── Header, Toaster, CreateTaskDialog, CreateProjectDialog
 │   └── ui/           shadcn primitives
 ├── hooks/            useBoard (data + grouping), useTaskEvents (SSE)

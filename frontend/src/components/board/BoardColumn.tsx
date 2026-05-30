@@ -11,10 +11,10 @@ import { cn } from '@/lib/utils';
 interface BoardColumnProps {
   status: TaskStatus;
   tasks: Task[];
-  assigneeName: (id: string | null) => string;
+  userName: (id: string | null) => string;
 }
 
-export function BoardColumn({ status, tasks, assigneeName }: BoardColumnProps) {
+export function BoardColumn({ status, tasks, userName }: BoardColumnProps) {
   const { dragging, canDrop, endDrag } = useBoardDnd();
   const updateStatus = useUpdateStatus();
   const toast = useToast((s) => s.push);
@@ -69,7 +69,7 @@ export function BoardColumn({ status, tasks, assigneeName }: BoardColumnProps) {
           <p className="px-1 py-4 text-center text-xs text-muted-foreground">No tasks</p>
         )}
         {tasks.map((task) => (
-          <TaskCard key={task.id} task={task} assigneeName={assigneeName(task.assigneeId)} />
+          <TaskCard key={task.id} task={task} userName={userName} />
         ))}
       </div>
     </section>
