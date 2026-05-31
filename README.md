@@ -1,10 +1,10 @@
-# Team Task Tracker API
+# Team Task Tracker
 
-A REST API for managing tasks within a team, with JWT authentication, role-based
-access control, a server-enforced task status state machine, Redis caching, and a
-zero-setup containerized deployment.
+A full-stack team task management app with JWT authentication, role-based access
+control, a server-enforced task status state machine, Redis caching, real-time SSE
+notifications, and a React frontend — all containerised for one-command startup.
 
-Built with **Node.js + TypeScript + Express + Prisma (PostgreSQL) + Redis**.
+**Stack:** Node.js · TypeScript · Express · Prisma · PostgreSQL · Redis · React · Vite · Docker
 
 ---
 
@@ -14,6 +14,7 @@ Built with **Node.js + TypeScript + Express + Prisma (PostgreSQL) + Redis**.
 - [Architecture](#architecture)
 - [Authentication & roles](#authentication--roles)
 - [API reference](#api-reference)
+- [Frontend](#frontend)
 - [Error format](#error-format)
 - [Caching strategy & invalidation](#caching-strategy--invalidation)
 - [Database design](#database-design)
@@ -27,33 +28,29 @@ Built with **Node.js + TypeScript + Express + Prisma (PostgreSQL) + Redis**.
 The reviewer needs **only Docker**. No `.env`, no manual migrations, no seeding step.
 
 ```bash
-cd backend
 docker compose up --build
 ```
 
-This will:
+This single command from the repo root starts:
 
-1. Start **PostgreSQL** and **Redis** (with healthchecks).
-2. Build the backend image (multi-stage).
-3. On boot, the backend automatically runs `prisma migrate deploy`, seeds an admin
-   user, then starts the server.
+| Service | URL |
+|---|---|
+| **React frontend** | http://localhost:5173 |
+| **REST API** | http://localhost:8080/api |
+| **Swagger UI** | http://localhost:8080/api/docs |
+| PostgreSQL | localhost:5432 |
+| Redis | localhost:6379 |
 
-The API is then available at **http://localhost:8080/api**.
-
-A health check confirms it's up:
-
-```bash
-curl http://localhost:8080/api/health        # {"status":"ok"}
-curl http://localhost:8080/api/health/ready   # checks Postgres + Redis
-```
+On boot the backend automatically runs `prisma migrate deploy`, seeds an admin user,
+then starts the server.
 
 ### Seeded admin
 
-A single ADMIN account is seeded so you can authenticate immediately:
-
 | Email | Password |
-|-------|----------|
+|---|---|
 | `admin@example.com` | `Admin@12345` |
+
+Sign in at http://localhost:5173 or via the API:
 
 ```bash
 curl -X POST http://localhost:8080/api/auth/login \
@@ -63,116 +60,130 @@ curl -X POST http://localhost:8080/api/auth/login \
 
 ### Port conflicts
 
-If `5432`, `6379`, or `8080` are already in use on your machine, override the
-published ports (internal networking is unaffected):
+If any default port is already in use, override it — internal Docker networking is
+unaffected:
 
 ```bash
 POSTGRES_PORT=55432 REDIS_PORT=56379 PORT=8099 docker compose up --build
 ```
 
+### Backend only
+
+```bash
+cd backend && docker compose up --build
+```
+
 ### Local development (without Docker)
 
 ```bash
+# terminal 1 — backend
 cd backend
-cp .env.example .env        # adjust DATABASE_URL / REDIS_URL to your local services
+cp .env.example .env        # adjust DATABASE_URL / REDIS_URL
 npm install
-npm run db:migrate          # prisma migrate dev
+npm run db:migrate
 npm run db:seed
-npm run dev                 # tsx watch
+npm run dev                 # tsx watch, http://localhost:8080
+
+# terminal 2 — frontend
+cd frontend
+npm install
+npm run dev                 # http://localhost:5173
 ```
 
 ### Tests
 
-Integration tests cover the two most critical flows — the **RBAC permission matrix**
-and the **task status state machine** — exercising the real Express app via
-`supertest`. They need a Postgres and Redis (a throwaway pair is easiest) and a
-migrated schema:
-
 ```bash
-# 1. start throwaway services
-docker run -d --name test-pg  -e POSTGRES_USER=taskuser -e POSTGRES_PASSWORD=taskpassword \
+docker run -d --name test-pg \
+  -e POSTGRES_USER=taskuser -e POSTGRES_PASSWORD=taskpassword \
   -e POSTGRES_DB=tasktracker -p 5432:5432 postgres:16-alpine
 docker run -d --name test-redis -p 6379:6379 redis:7-alpine
 
-# 2. apply migrations, then run the suite
 cd backend
-DATABASE_URL=postgresql://taskuser:taskpassword@localhost:5432/tasktracker npm run db:migrate:deploy
 DATABASE_URL=postgresql://taskuser:taskpassword@localhost:5432/tasktracker \
-REDIS_URL=redis://localhost:6379 \
-JWT_ACCESS_SECRET=test_access_secret_at_least_32_characters_long \
-JWT_REFRESH_SECRET=test_refresh_secret_at_least_32_characters_long \
-npm test
+  npm run db:migrate:deploy
+DATABASE_URL=postgresql://taskuser:taskpassword@localhost:5432/tasktracker \
+  REDIS_URL=redis://localhost:6379 \
+  JWT_ACCESS_SECRET=test_access_secret_at_least_32_characters_long \
+  JWT_REFRESH_SECRET=test_refresh_secret_at_least_32_characters_long \
+  npm test
 ```
-
-The suite runs serially (`--runInBand`) and truncates tables between suites.
-
-### Frontend (optional)
-
-A React task board lives in [`frontend/`](frontend/README.md). With the backend
-running: `cd frontend && npm install && npm run dev`, then open http://localhost:5173
-and sign in with the seeded admin.
 
 ---
 
 ## Architecture
 
 ```
-backend/src
-├── app.ts                 # express app: helmet, cors, rate-limit, json, routes, error handler
-├── server.ts              # http server bootstrap + graceful shutdown
-├── config/                # env (zod-validated), logger (pino), database (prisma), redis (ioredis)
-├── core/
-│   ├── BaseApiRoutes.ts   # declarative router base (REST + custom routes)
-│   ├── BaseController.ts   # generic CRUD: pagination, search, filters, access scoping, lifecycle hooks
-│   ├── ApiError.ts        # typed errors -> consistent JSON shape
-│   └── asyncHandler.ts    # promise error forwarding
-├── middleware/            # authenticate, requireRole (RBAC), validate (zod), error, requestId
-├── modules/
-│   ├── auth/              # login / refresh (rotation) / logout
-│   ├── user/              # user CRUD (ADMIN-managed)
-│   ├── project/           # project CRUD
-│   └── task/              # task CRUD, filtering, status state machine, caching
-└── utils/                 # jwt, password (bcrypt), cache (versioned task cache)
+.
+├── docker-compose.yml          # full-stack: postgres + redis + backend + frontend
+├── backend/
+│   ├── docker-compose.yml      # backend-only compose (for API-only reviewers)
+│   ├── Dockerfile              # multi-stage Node build
+│   ├── openapi.yaml            # OpenAPI 3.0 spec (also served live at /api/docs)
+│   └── src/
+│       ├── app.ts              # express: helmet, cors, rate-limit, routes, error handler
+│       ├── server.ts           # http server + graceful shutdown
+│       ├── config/             # env (zod-validated), logger (pino), database, redis
+│       ├── core/               # BaseApiRoutes, BaseController (generic CRUD), ApiError, asyncHandler
+│       ├── middleware/         # authenticate, requireRole, validate, error, requestId
+│       ├── modules/            # auth · user · project · task · notification · analytics
+│       └── utils/              # jwt, password (bcrypt), cache (versioned Redis)
+└── frontend/
+    ├── Dockerfile              # multi-stage: Vite build → nginx
+    ├── docker-compose.yml      # frontend-only compose
+    └── src/
+        ├── pages/              # Login · Register · Board · Users (admin)
+        ├── components/         # Header, board columns, task modal, dialogs
+        ├── stores/             # auth (Zustand + persist), toast
+        └── lib/                # api (axios + auto-refresh), queries (TanStack Query), types
 ```
 
-**Key idea — a thin generic base.** `BaseController` implements CRUD once
-(pagination, search, list filters, row-level access scoping, and `before*/after*`
-lifecycle hooks). Each module is small and declarative: it overrides hooks
-(`getAccessScope`, `beforeSave`, `afterUpdate`, …) rather than re-implementing
-controllers. RBAC is layered on at the route level via middleware.
+**Key design — thin generic base.** `BaseController` implements CRUD once with
+pagination, search, filters, row-level access scoping, and `before*/after*`
+lifecycle hooks. Each module overrides only what it needs (`getAccessScope`,
+`beforeSave`, `afterUpdate`, …) rather than re-implementing controllers from scratch.
 
 ---
 
 ## Authentication & roles
 
-- **Login** issues a short-lived **access token** (JWT, 15m) in the response body
-  and a long-lived **refresh token** (7d) in an `httpOnly`, `sameSite=lax` cookie
+- **Login** issues a short-lived **access token** (JWT, 15 min) in the response body
+  and a long-lived **refresh token** (7 days) in an `httpOnly`, `sameSite=lax` cookie
   scoped to `/api/auth/refresh`.
 - **Refresh token rotation**: each `/auth/refresh` revokes the presented token and
-  issues a new one. Refresh tokens are persisted; presenting a **revoked/expired**
-  token triggers **reuse detection** — all of that user's active refresh tokens are
-  revoked (defends against stolen-token replay).
-- Access tokens carry `{ sub, role }` and are verified by the `authenticate`
-  middleware (`Authorization: Bearer <token>`).
+  issues a new pair. Presenting a revoked token triggers **reuse detection** — all of
+  that user's active tokens are invalidated.
+- **User deletion revokes sessions immediately**: deleting a user revokes all their
+  active refresh tokens so they cannot re-authenticate with an unexpired cookie.
+- Access tokens carry `{ sub, role }` and are verified by `authenticate` middleware.
+- The frontend keeps access tokens **in memory only** (never localStorage). The
+  persisted user profile allows the UI to render immediately on reload; the httpOnly
+  cookie silently re-issues the access token on the first API call.
 
 ### Roles & permissions
 
 | Capability | ADMIN | MANAGER | MEMBER |
 |---|:---:|:---:|:---:|
-| Manage users (create/update/delete) | ✅ | — | — |
-| View team roster (list users) | ✅ | ✅ | — |
-| Manage projects (create/update/delete) | ✅ | ✅ | — |
+| Manage users (create / update / delete) | ✅ | — | — |
+| Promote user to ADMIN | ✅ | — | — |
+| View team roster | ✅ | ✅ | — |
+| Manage projects | ✅ | ✅ | — |
 | View projects | ✅ | ✅ | ✅ |
 | Create / delete tasks, assign members | ✅ | ✅ | — |
-| View / update **any** task | ✅ | ✅ | — |
-| View / update tasks **assigned to them** | ✅ | ✅ | ✅ |
+| View / update any task | ✅ | ✅ | — |
+| View / update own assigned tasks | ✅ | ✅ | ✅ |
 | Change task status | ✅ | ✅ | assignee only |
 | View analytics | ✅ | ✅ | — |
 
-**Where RBAC lives:** *role* checks are enforced in the `requireRole(...)`
-**middleware** (not in controllers), as required. *Ownership* rules (e.g. "a MEMBER
-may only touch tasks assigned to them") are a separate, data-level concern enforced
-via `BaseController.getAccessScope()` and the task `beforeSave` hook.
+**Where RBAC lives:** role checks are enforced in `requireRole(...)` **middleware**
+(not controllers). Ownership rules ("a MEMBER may only touch tasks assigned to them")
+are data-level and enforced via `BaseController.getAccessScope()`.
+
+### Safety guards on user deletion (ADMIN)
+
+- Cannot delete **your own account**
+- Cannot delete the **last admin** (system would be unmanageable)
+- Cannot delete a user who **owns projects** — reassign or delete them first
+- Attempting any of these returns a descriptive `400` or `409`, never a 500
 
 ---
 
@@ -180,16 +191,11 @@ via `BaseController.getAccessScope()` and the task `beforeSave` hook.
 
 Base URL: `/api`. All non-auth routes require `Authorization: Bearer <accessToken>`.
 
-> 📘 **Interactive API docs (Swagger UI):** with the stack running, open
-> **http://localhost:8080/api/docs**. The raw OpenAPI spec is served at
-> `/api/openapi.json` and committed as [`backend/openapi.yaml`](backend/openapi.yaml).
-> Click **Authorize**, paste an access token from `POST /auth/login`, and try any
-> endpoint.
+> **Interactive docs (Swagger UI):** http://localhost:8080/api/docs
+> Raw spec: `/api/openapi.json` · Committed as `backend/openapi.yaml`
 
 > **List convention:** list endpoints are `POST /<resource>/all` with filters and
-> pagination in the JSON body (not `GET` query strings). This keeps complex,
-> typed filter payloads clean and consistently validated. See
-> [tradeoffs](#design-decisions--tradeoffs).
+> pagination in the JSON body. See [tradeoffs](#design-decisions--tradeoffs).
 
 ### Auth
 | Method | Path | Access | Body |
@@ -199,25 +205,17 @@ Base URL: `/api`. All non-auth routes require `Authorization: Bearer <accessToke
 | POST | `/auth/refresh` | refresh cookie | — |
 | POST | `/auth/logout` | authenticated | — |
 
-The **first** registered user (empty database) is bootstrapped as `ADMIN`; everyone
-else registers as `MEMBER`. Public signup can't self-assign a privileged role.
+The **first** registered user is bootstrapped as `ADMIN`; all others register as
+`MEMBER`. Public signup cannot self-assign a privileged role.
 
-### Analytics
-| Method | Path | Access |
-|---|---|---|
-| GET | `/analytics/overview` | ADMIN, MANAGER |
-
-Returns overdue task count per user and average completion time (overall + per user),
-computed with SQL aggregation over a `completedAt` timestamp set when a task enters `DONE`.
-
-### Users (ADMIN-managed)
+### Users
 | Method | Path | Access |
 |---|---|---|
 | POST | `/users/all` | ADMIN, MANAGER |
 | GET | `/users/:id` | ADMIN, MANAGER |
-| POST | `/users` | ADMIN |
-| PUT | `/users/:id` | ADMIN |
-| DELETE | `/users/:id` | ADMIN |
+| POST | `/users` | ADMIN — role limited to MANAGER \| MEMBER |
+| PUT | `/users/:id` | ADMIN — can set any role including ADMIN |
+| DELETE | `/users/:id` | ADMIN — guarded (see above) |
 
 ### Projects
 | Method | Path | Access |
@@ -233,53 +231,75 @@ computed with SQL aggregation over a `completedAt` timestamp set when a task ent
 |---|---|---|---|
 | POST | `/tasks/all` | any authenticated | MEMBERs see only their own tasks |
 | GET | `/tasks/:id` | any authenticated | MEMBER scoped to own |
-| POST | `/tasks` | ADMIN, MANAGER | `title` required; `dueDate` must be future |
-| PUT | `/tasks/:id` | any authenticated | MEMBER: own task, cannot reassign/move |
+| POST | `/tasks` | ADMIN, MANAGER | `dueDate` must be future |
+| PUT | `/tasks/:id` | any authenticated | MEMBER: own task only, cannot reassign |
 | DELETE | `/tasks/:id` | ADMIN, MANAGER | |
-| PATCH | `/tasks/:id/status` | assignee or MANAGER/ADMIN | enforced transitions |
+| PATCH | `/tasks/:id/status` | assignee or MANAGER/ADMIN | enforces state machine |
+
+**Status state machine** (server-enforced, illegal transitions return `409`):
+
+```
+TODO ──▶ IN_PROGRESS ──▶ IN_REVIEW ──▶ DONE   (terminal)
+  └──────────┴───────────────┴──────▶ BLOCKED
+BLOCKED ──▶ TODO | IN_PROGRESS | IN_REVIEW
+```
+
+### Analytics
+| Method | Path | Access |
+|---|---|---|
+| GET | `/analytics/overview` | ADMIN, MANAGER |
+
+Returns overdue task count per user and average task completion time, computed with
+SQL aggregation over a `completedAt` timestamp set when a task enters `DONE`.
 
 ### Real-time notifications (SSE)
 | Method | Path | Access |
 |---|---|---|
-| GET | `/notifications/stream` | authenticated (token via header or `?access_token=`) |
+| GET | `/notifications/stream` | authenticated (`?access_token=` or header) |
 
-A [Server-Sent Events](#real-time-notifications-sse-1) stream that pushes a
-`task.status` event to a user whenever a task **assigned to them** changes status.
+Pushes `task.status` events via Server-Sent Events. MEMBERs receive events for tasks
+assigned to them; ADMIN/MANAGER receive all events. Backed by Redis pub/sub so
+events publish across multiple backend instances.
 
-**Task list filters** (`POST /tasks/all` body): `status`, `priority`, `assigneeId`,
-`projectId`, `search`, `page`, `limit`, `orderBy`, `order`.
-
-**Status state machine** (server-enforced):
-
-```
-TODO ──▶ IN_PROGRESS ──▶ IN_REVIEW ──▶ DONE        (DONE is terminal)
-  └──────────┴───────────────┴──────▶ BLOCKED      (from any active state)
-BLOCKED ──▶ TODO | IN_PROGRESS | IN_REVIEW          (resume)
-```
-
-Illegal transitions return `409 INVALID_TRANSITION` with the allowed set. Status is
-**only** mutable through this endpoint — it cannot be set via create/update.
-
-#### Example: create a task
 ```bash
-curl -X POST http://localhost:8080/api/tasks \
-  -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
-  -d '{"title":"Build login","priority":"HIGH","projectId":"<id>","assigneeId":"<userId>","dueDate":"2027-01-01"}'
+curl -N "http://localhost:8080/api/notifications/stream?access_token=$TOKEN"
+# event: task.status
+# data: {"taskId":"...","title":"...","from":"TODO","to":"IN_PROGRESS"}
 ```
 
 ---
 
-## Error format
+## Frontend
 
-Every error returns a consistent JSON shape:
+A React task board at http://localhost:5173 (served by nginx in Docker).
+
+| Page | Route | Access |
+|---|---|---|
+| Sign in | `/login` | public |
+| Register | `/register` | public — creates MEMBER account |
+| Task board | `/` | authenticated |
+| User management | `/users` | ADMIN only |
+
+**User management** (`/users`) lets admins create users (MANAGER or MEMBER role),
+edit any user (name, email, role — including promoting to ADMIN), and delete users
+(with the same guards as the API: no self-delete, no last-admin delete, no delete
+if user owns projects).
+
+The board shows tasks in Kanban columns with drag-and-drop status transitions, live
+SSE toast notifications when any task moves, and role-aware controls — only
+ADMIN/MANAGER see project and task creation buttons.
+
+---
+
+## Error format
 
 ```json
 { "status": 400, "code": "VALIDATION_ERROR", "message": "dueDate must be a future date" }
 ```
 
 Validation errors include a `details` object with per-field messages. Common codes:
-`VALIDATION_ERROR`, `UNAUTHORIZED`, `FORBIDDEN`, `NOT_FOUND`, `CONFLICT`,
-`INVALID_TRANSITION`, `RATE_LIMITED`, `INTERNAL_ERROR`.
+`VALIDATION_ERROR` · `UNAUTHORIZED` · `FORBIDDEN` · `NOT_FOUND` · `CONFLICT` ·
+`INVALID_TRANSITION` · `RATE_LIMITED` · `INTERNAL_ERROR`.
 
 ---
 
@@ -296,127 +316,103 @@ cached. Cached entries have a 10-minute TTL as a safety net.
 tasks:assignee:{userId}:v{version}:{filterHash}
 ```
 
-where `filterHash` is a hash of the result-affecting query params (page, limit,
-status, priority, projectId, search, order).
+`filterHash` is a SHA-1 of the result-affecting query params (page, limit, status,
+priority, projectId, search, order).
 
 **Invalidation — version bumping.** Each assignee has a monotonically increasing
-version counter (`tasks:assignee:version:{userId}`). Any change to that user's tasks
+version counter (`tasks:assignee:version:{userId}`). Any write to that user's tasks
 **increments the version**, which changes the key prefix for every subsequent read —
-instantly orphaning *all* previously cached filter combinations for that user. Old
-keys are never scanned or deleted; they simply fall out via TTL.
+instantly orphaning all previously cached filter combinations for that user without
+scanning or deleting individual keys.
 
 The version is bumped on:
 
-- **create** → the new assignee
-- **update** → the assignee (and, on **reassignment**, *both* the old and new assignee)
-- **status change** → the assignee
-- **delete** → the assignee
+- **create** → the new assignee's version
+- **update** → the assignee's version (and *both* old and new on reassignment)
+- **status change** → the assignee's version
+- **delete** → the assignee's version
 
-**Why this approach:** it's atomic (a single `INCR`), avoids the cost and race
-conditions of tracking/deleting individual keys (`KEYS`/`SCAN` patterns), and makes
-"invalidate everything for this user" an O(1) operation regardless of how many
-filter permutations were cached. The tradeoff is some stale keys lingering until TTL,
-which is harmless because they can never be read again.
+**Why this approach:** a single `INCR` is atomic and O(1) regardless of how many
+filter permutations were cached. Old entries are never explicitly deleted — they
+simply become unreachable and fall out via TTL. This avoids `KEYS`/`SCAN` patterns
+and the race conditions of key-by-key deletion.
 
 ---
 
-## Real-time notifications (SSE)
-
-Clients subscribe to `GET /api/notifications/stream` and receive a `task.status`
-event the moment a relevant task transitions status. **Delivery is role-aware:** a
-MEMBER is notified about tasks **assigned to them** (per the brief), while an
-ADMIN/MANAGER receives **all** task status events so their board — which shows every
-task — stays live.
-
-```bash
-curl -N "http://localhost:8080/api/notifications/stream?access_token=$TOKEN"
-
-event: connected
-data: {"userId":"..."}
-
-event: task.status
-data: {"taskId":"...","title":"...","from":"TODO","to":"IN_PROGRESS","projectId":"..."}
-```
-
-**Event-driven design.** Status changes are published to a **Redis pub/sub** channel,
-not a process-local emitter. Each backend instance keeps an in-memory registry of the
-SSE connections it holds and applies the role-aware delivery rule above when fanning
-out a message.
-Because delivery rides on Redis, a notification published by one instance reaches a
-client connected to any other instance — so this scales horizontally without sticky
-sessions. SSE (vs. WebSocket) keeps it a plain one-way HTTP stream: no upgrade
-handshake, auto-reconnect built into the browser's `EventSource`, and trivial auth
-(`EventSource` can't set headers, so a `?access_token=` query param is accepted).
-
 ## Database design
 
-Entities: **User**, **RefreshToken**, **Project**, **Task** (`Role`, `Priority`,
-`TaskStatus` enums). See [`backend/prisma/schema.prisma`](backend/prisma/schema.prisma).
+Entities: **User**, **RefreshToken**, **Project**, **Task** (enums: `Role`,
+`Priority`, `TaskStatus`). Full schema: [`backend/prisma/schema.prisma`](backend/prisma/schema.prisma).
 
 ```
-User 1───* Task   (assignee, optional, ON DELETE SET NULL)
-User 1───* Task   (creator,           ON DELETE RESTRICT)
-User 1───* Project (creator)
-Project 1───* Task  (ON DELETE CASCADE)
+User 1───* Task         (assignee — nullable, ON DELETE SET NULL)
+User 1───* Task         (creator  — ON DELETE RESTRICT)
+User 1───* Project      (creator)
+Project 1───* Task      (ON DELETE CASCADE)
 User 1───* RefreshToken (ON DELETE CASCADE)
 ```
 
-**Indexes** on the frequently-queried task columns: `status`, `assigneeId`,
-`dueDate` (plus `projectId`).
+**Indexes** on frequently-queried task columns: `status`, `assigneeId`, `dueDate`,
+`projectId`.
 
-### A design decision, explained — the `assigneeId` index + access pattern
+### A design decision, explained — the `assigneeId` index and access pattern
 
 The single most common read in this system is *"list the tasks for one assignee"* —
 it's the MEMBER's entire view, the `assigneeId` filter for managers, **and** the
-exact query behind the Redis cache. I deliberately aligned three things around it:
+exact query behind the Redis cache. Three things are deliberately aligned around it:
 
-1. an **index on `Task.assigneeId`**, so that scoped query is an index lookup rather
-   than a full scan as the table grows;
-2. the **access-scoping layer** (`getAccessScope`) which forces `assigneeId = me` for
-   MEMBERs at the query level — they can never even fetch another user's task; and
-3. the **cache namespace**, keyed by `assigneeId`, so a MEMBER's view and a manager's
-   `assigneeId`-filtered view share the same cache entries and the same invalidation.
+1. An **index on `Task.assigneeId`** so a scoped query is an index lookup rather
+   than a full scan as the table grows.
+2. The **access-scoping layer** (`getAccessScope`) which forces `assigneeId = me`
+   for MEMBERs at the query level — they can never fetch another user's task even
+   with a crafted request.
+3. The **cache namespace**, keyed by `assigneeId`, so a MEMBER's view and a
+   manager's `assigneeId`-filtered view share the same cache entries and the same
+   invalidation path.
 
 A related choice: `Task.assigneeId` is **nullable with `ON DELETE SET NULL`**.
-Deleting a user **unassigns** their tasks rather than cascade-deleting real work — the
+Deleting a user *unassigns* their tasks rather than cascade-deleting real work — the
 task history is preserved and can be reassigned. The task *creator* uses
-`ON DELETE RESTRICT` for the opposite reason: you shouldn't be able to delete a user
-while they still own created records without an explicit decision.
+`ON DELETE RESTRICT` for the opposite reason: deleting a user who still owns created
+records requires an explicit decision (reassign or delete the records first).
 
 ---
 
 ## Design decisions & tradeoffs
 
-These are intentional scope choices for a 3-day build; each is easy to extend.
-
-- **Single-tenant.** The brief describes an organization-scoped system; this
-  implementation treats the deployment as a single organization (no `Organization`
-  entity). This removes an `orgId` from every model, query, and access check, keeping
-  the RBAC and caching layers focused. Multi-tenancy is the first thing I'd add back
-  (see below).
-- **Registration + admin provisioning.** Public `POST /auth/register` creates `MEMBER`
-  accounts (the first user on an empty database bootstraps as `ADMIN`); admins can also
-  create users (including MANAGERs) via `POST /users`. Public signup never self-assigns
-  a privileged role.
-- **`POST /<resource>/all` for lists.** Filters/pagination travel in the JSON body and
-  are validated by the same zod layer as everything else, avoiding ad-hoc query-string
-  parsing. The tradeoff is that it's less "RESTful" than `GET ?status=...`.
+- **Single-tenant.** No `Organization` entity — the deployment is treated as one
+  organisation. This removes an `orgId` from every model, query, and access check,
+  keeping the RBAC and caching layers focused. Multi-tenancy is the first extension
+  I'd add (see below).
+- **Registration + admin provisioning.** `POST /auth/register` creates MEMBER
+  accounts (the first user on an empty database bootstraps as ADMIN). Admins can
+  create MANAGER/MEMBER accounts via `POST /users` and promote to ADMIN via
+  `PUT /users/:id`. Public signup never self-assigns a privileged role.
+- **`POST /<resource>/all` for lists.** Filters and pagination travel in the JSON
+  body, validated by the same Zod layer as everything else, avoiding ad-hoc
+  query-string parsing. The tradeoff is it's less idiomatic REST than `GET ?...`.
 - **RBAC in middleware, ownership in the controller.** Role gating is pure middleware
   (`requireRole`); assignee-level ownership is data-level authorization
-  (`getAccessScope`). Keeping them separate keeps the middleware role-only, as the
-  brief requires.
-- **Bonus features**: all four are implemented — analytics endpoint, real-time SSE
-  notifications, integration tests (RBAC + status state machine), and a React task
-  board ([`frontend/`](frontend/README.md)).
+  (`getAccessScope`). Keeping them separate means the middleware is role-only, as
+  required.
+- **Bonus features implemented:** analytics endpoint · real-time SSE notifications ·
+  integration tests (RBAC matrix + status state machine) · React frontend with admin
+  user management.
 
 ---
 
 ## What I'd improve with more time
 
-- **Multi-tenancy**: reintroduce `Organization`, scope all entities and access checks
-  by `orgId`, and set tenancy at user creation.
-- **More test coverage**: the critical flows (RBAC matrix, status state machine) have
-  integration tests; I'd extend coverage to auth/refresh rotation and the cache layer.
-- **Hardening**: per-user rate limiting, refresh-token family/device tracking, and
-  structured audit logging of mutations.
-- **Field-level task permissions**: finer control over which fields a MEMBER may edit.
+- **Multi-tenancy**: add `Organization`, scope all entities and access checks by
+  `orgId`, set tenancy at user creation.
+- **Invite-only registration**: replace open signup with admin-issued invite tokens
+  so users cannot self-register without an explicit invitation.
+- **More test coverage**: extend integration tests to cover auth/refresh rotation,
+  the cache invalidation layer, and the user management guards.
+- **Hardening**: per-user rate limiting, refresh-token device/family tracking,
+  structured audit logging of all mutations.
+- **Field-level task permissions**: finer control over which fields a MEMBER may
+  edit on their own tasks.
+- **Frontend Dockerfile build-arg for API URL**: currently `VITE_API_URL` defaults
+  to `localhost:8080` at build time. For a real deployment this would be the public
+  API domain, passed in as a CI build argument.

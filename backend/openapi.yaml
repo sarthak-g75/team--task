@@ -203,18 +203,27 @@ paths:
             schema:
               type: object
               properties:
-                name: { type: string }
+                name: { type: string, minLength: 2 }
+                email: { type: string, format: email }
                 password: { type: string, minLength: 8 }
                 role: { type: string, enum: [ADMIN, MANAGER, MEMBER] }
       responses:
         '200': { description: Updated }
         '403': { $ref: '#/components/responses/Error' }
+        '409': { description: Email already in use }
     delete:
       tags: [Users]
       summary: Delete a user (ADMIN)
+      description: >
+        Deletes the user and immediately revokes all their active sessions.
+        Returns 400 if the requester tries to delete their own account or if
+        the target is the last ADMIN. Returns 409 if the user owns projects
+        that must be reassigned or deleted first.
       responses:
         '204': { description: Deleted }
+        '400': { description: Self-delete or last-admin guard triggered }
         '403': { $ref: '#/components/responses/Error' }
+        '409': { description: User owns projects — reassign them first }
 
   /projects/all:
     post:
