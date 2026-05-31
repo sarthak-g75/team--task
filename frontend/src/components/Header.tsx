@@ -57,6 +57,11 @@ export function Header({
             + New task
           </Button>
         )}
+        {user?.role === 'ADMIN' && (
+          <Button size="sm" variant="outline" onClick={() => navigate('/users')}>
+            Users
+          </Button>
+        )}
         <div className="text-right text-xs">
           <p className="font-medium">{user?.name}</p>
           <p className="text-muted-foreground">{user?.role}</p>

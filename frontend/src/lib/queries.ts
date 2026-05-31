@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/lib/api';
 import { useAuth } from '@/stores/auth';
-import type { Paginated, Priority, Project, Task, TaskStatus, User } from '@/lib/types';
+import type { Paginated, Priority, Project, Role, Task, TaskStatus, User } from '@/lib/types';
 
 interface ListResponse<T> {
   data: T[];
@@ -101,6 +101,52 @@ export function useDeleteTask() {
       await api.delete(`/tasks/${id}`);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tasks'] }),
+  });
+}
+
+export interface CreateUserInput {
+  name: string;
+  email: string;
+  password: string;
+  role: Exclude<Role, 'ADMIN'>;
+}
+
+export function useCreateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: CreateUserInput) => {
+      const res = await api.post<ItemResponse<User>>('/users', input);
+      return res.data.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
+export interface UpdateUserInput {
+  name?: string;
+  email?: string;
+  password?: string;
+  role?: Role;
+}
+
+export function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: UpdateUserInput }) => {
+      const res = await api.put<ItemResponse<User>>(`/users/${id}`, data);
+      return res.data.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
+  });
+}
+
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      await api.delete(`/users/${id}`);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['users'] }),
   });
 }
 

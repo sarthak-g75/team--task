@@ -23,10 +23,55 @@ export class UserController extends BaseController {
     return role !== undefined ? { role } : {};
   }
 
-  protected async beforeSave(data: Record<string, unknown>, method: 'create' | 'update') {
-    if (method === 'create') {
-      const existing = await this.model!.findUnique({ where: { email: data['email'] } });
-      if (existing) throw ApiError.conflict('Email already in use');
+  protected async beforeAll(req: Request): Promise<void> {
+    if (req.method !== 'DELETE') return;
+    const id = req.params['id'] as string;
+    if (!id) return;
+
+    if (id === req.user?.sub) {
+      throw ApiError.badRequest('You cannot delete your own account');
+    }
+
+    const target = await prisma.user.findUnique({ where: { id }, select: { role: true } });
+    if (!target) return;
+
+    if (target.role === 'ADMIN') {
+      const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } });
+      if (adminCount <= 1) {
+        throw ApiError.badRequest('Cannot delete the last admin account');
+      }
+    }
+
+    const projectCount = await prisma.project.count({ where: { createdById: id } });
+    if (projectCount > 0) {
+      throw ApiError.conflict(
+        `This user owns ${projectCount} project(s). Reassign or delete them first.`,
+      );
+    }
+  }
+
+  protected async afterDestroy(record: unknown): Promise<void> {
+    const { id } = record as { id: string };
+    await prisma.refreshToken.updateMany({
+      where: { userId: id },
+      data: { revokedAt: new Date() },
+    });
+  }
+
+  protected async beforeSave(
+    data: Record<string, unknown>,
+    _method: 'create' | 'update',
+    req: Request,
+  ) {
+    if (typeof data['email'] === 'string') {
+      const existing = await prisma.user.findUnique({
+        where: { email: data['email'] as string },
+        select: { id: true },
+      });
+      const targetId = req.params['id'] as string | undefined;
+      if (existing && existing.id !== targetId) {
+        throw ApiError.conflict('Email already in use');
+      }
     }
   }
 

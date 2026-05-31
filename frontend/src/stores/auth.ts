@@ -19,6 +19,11 @@ export const useAuth = create<AuthState>()(
       setToken: (accessToken) => set({ accessToken }),
       clear: () => set({ accessToken: null, user: null }),
     }),
-    { name: 'tasktracker-auth' },
+    {
+      name: 'tasktracker-auth',
+      // Only persist the user profile, never the access token.
+      // The token lives in memory only; the httpOnly refresh-token cookie re-issues it.
+      partialize: (state) => ({ user: state.user }),
+    },
   ),
 );
